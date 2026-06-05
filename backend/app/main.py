@@ -22,6 +22,7 @@ from .ingestion import (
     parse_csv_rows,
     parse_geojson_rows,
 )
+from .intelligence import build_candidate_dossier
 from .letters import DISCLAIMER, letter_de, letter_fr, letter_it
 from .seed import seed_cantons
 
@@ -117,6 +118,14 @@ def generate_letter(candidate_id: int, lang: str = "de", db: Session = Depends(g
         raise HTTPException(status_code=404, detail="Candidate not found")
     letter_fn = {"de": letter_de, "fr": letter_fr, "it": letter_it}.get(lang, letter_de)
     return {"language": lang, "text": letter_fn(row)}
+
+
+@app.get("/candidates/{candidate_id}/dossier", response_model=schemas.CandidateDossierOut)
+def generate_dossier(candidate_id: int, db: Session = Depends(get_db)):
+    row = db.query(models.ParcelCandidate).filter(models.ParcelCandidate.id == candidate_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    return build_candidate_dossier(row)
 
 
 @app.post("/ingest/upload")

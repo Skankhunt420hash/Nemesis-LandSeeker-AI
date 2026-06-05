@@ -18,6 +18,7 @@ function SignalPill({ children, tone = "slate" }) {
     emerald: "bg-emerald-100 text-emerald-800 border-emerald-200",
     amber: "bg-amber-100 text-amber-800 border-amber-200",
     slate: "bg-slate-100 text-slate-700 border-slate-200",
+    rose: "bg-rose-100 text-rose-800 border-rose-200",
   };
   return <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${tones[tone]}`}>{children}</span>;
 }
@@ -52,7 +53,7 @@ function NativeSetup({ apiBase, setApiBase, onSave, health }) {
   return (
     <SectionCard
       title="Native App Verbindung"
-      subtitle="Die Android-App laeuft nativ. Fuer Recherche und Celery braucht sie eine erreichbare FastAPI-Instanz, z. B. deinen Rechner im selben WLAN."
+      subtitle="Die Android-App braucht eine erreichbare FastAPI-Instanz, zum Beispiel deinen Rechner im selben WLAN."
     >
       <div className="space-y-3">
         <input
@@ -72,6 +73,18 @@ function NativeSetup({ apiBase, setApiBase, onSave, health }) {
   );
 }
 
+function DossierList({ items, tone = "slate" }) {
+  return (
+    <div className="space-y-2">
+      {items?.map((item) => (
+        <div key={item} className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+          <SignalPill tone={tone}>{item}</SignalPill>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function App() {
   if (window.location.pathname === "/legal") {
     return <LegalDisclaimer />;
@@ -86,6 +99,7 @@ export default function App() {
   const [letter, setLetter] = useState("");
   const [health, setHealth] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
+  const [dossier, setDossier] = useState(null);
 
   const [uploadFile, setUploadFile] = useState(null);
   const [jobId, setJobId] = useState("");
@@ -136,6 +150,17 @@ export default function App() {
       load();
     }
   }, [filterCanton, minScore, base]);
+
+  useEffect(() => {
+    if (!selected) {
+      setDossier(null);
+      return;
+    }
+
+    fetchJson(`/candidates/${selected.id}/dossier`)
+      .then((data) => setDossier(data))
+      .catch(() => setDossier(null));
+  }, [selected, base]);
 
   const updateStatus = async (id, verification_status) => {
     await fetchJson(`/candidates/${id}/status`, {
@@ -210,7 +235,7 @@ export default function App() {
             <div className="text-[11px] uppercase tracking-[0.34em] text-emerald-700">LandSeeker AI</div>
             <h1 className="text-3xl font-black tracking-tight">Frohe Schweizer Land-Recherche</h1>
             <p className="mt-1 max-w-2xl text-sm text-slate-600">
-              Native Android-App und Desktop-Oberflaeche fuer Kandidatenrecherche, Kartenansicht und Grundbuchamt-Anfragen.
+              Seltene High-Value-Werkzeuge fuer Registerpruefung, Evidenzsammlung und praktische Priorisierung.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -315,7 +340,7 @@ export default function App() {
             </div>
           </SectionCard>
 
-          <SectionCard title="Kandidatenliste" subtitle="Grosse Treffer zuerst. Tippe einen Eintrag an, um Details und den Briefgenerator zu sehen.">
+          <SectionCard title="Kandidatenliste" subtitle="Hohe Relevanz zuerst. Tippe einen Eintrag an, um die seltenen Due-Diligence-Tools zu laden.">
             <div className="space-y-3">
               {rows.map((row) => (
                 <button
@@ -375,6 +400,40 @@ export default function App() {
               <p className="mt-4 text-sm text-slate-600">Waehle einen Kandidaten aus. Auf dem Smartphone liegt dieser Bereich direkt unter der Liste.</p>
             )}
           </SectionCard>
+
+          {dossier ? (
+            <>
+              <SectionCard title="Practical Priority Engine" subtitle={dossier.summary}>
+                <div className="flex flex-wrap gap-2">
+                  <SignalPill tone="emerald">Praktischer Score {dossier.practical_score}</SignalPill>
+                  <SignalPill tone={dossier.caution_level === "hoch" ? "rose" : dossier.caution_level === "mittel" ? "amber" : "emerald"}>
+                    Vorsicht {dossier.caution_level}
+                  </SignalPill>
+                  <SignalPill tone="slate">{dossier.registry_readiness}</SignalPill>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Red-Flag Radar" subtitle="Seltene Treffer sind nur wertvoll, wenn die Ausschlussrisiken frueh sichtbar werden.">
+                <DossierList items={dossier.red_flags} tone="rose" />
+              </SectionCard>
+
+              <SectionCard title="Evidenz-Safe" subtitle="Diese Punkte sollten vor jeder rechtlichen Bewertung im Dossier liegen.">
+                <DossierList items={dossier.evidence_checklist} tone="slate" />
+              </SectionCard>
+
+              <SectionCard title="Registry Question Pack" subtitle="Diese Fragen bringen das Grundbuchamt schneller auf die entscheidenden Punkte.">
+                <DossierList items={dossier.registry_questions} tone="emerald" />
+              </SectionCard>
+
+              <SectionCard title="Next-Step Sequencer" subtitle="Empfohlene Reihenfolge fuer eine saubere und belastbare Pruefung.">
+                <DossierList items={dossier.next_steps} tone="amber" />
+              </SectionCard>
+
+              <SectionCard title="Source Provenance Vault" subtitle={dossier.legal_guardrail}>
+                <DossierList items={dossier.source_provenance} tone="slate" />
+              </SectionCard>
+            </>
+          ) : null}
 
           {letter ? (
             <SectionCard title="Briefentwurf" subtitle="Vorfertige Anfrage an das Grundbuchamt.">

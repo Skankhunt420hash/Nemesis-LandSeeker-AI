@@ -40,6 +40,19 @@ class WfsImportRequest(BaseModel):
 class ServiceMetadataRequest(BaseModel):
     url: str
 
+class CandidateDossierOut(BaseModel):
+    candidate_id: int
+    practical_score: int
+    caution_level: str
+    summary: str
+    registry_readiness: str
+    red_flags: List[str]
+    next_steps: List[str]
+    evidence_checklist: List[str]
+    registry_questions: List[str]
+    source_provenance: List[str]
+    legal_guardrail: str
+
 class ParcelOut(BaseModel):
     id: int
     canton: str
