@@ -1,7 +1,10 @@
-﻿# Python
+# Python
 __pycache__/
 *.pyc
 .venv/
+*.db
+*.sqlite
+*.log
 
 # Node
 node_modules/
@@ -18,4 +21,3 @@ frontend/android/build/
 # OS
 .DS_Store
 Thumbs.db
-
