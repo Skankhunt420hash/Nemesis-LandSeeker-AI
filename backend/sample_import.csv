@@ -1,0 +1,2 @@
+﻿canton,municipality,parcel_number,latitude,longitude,area_sqm,land_type,public_owner_text,source_url,is_protected_land
+VS,Sion,9993,46.231,7.358,35,old access road,no owner listed; abandoned parcel,https://example.ch/parcel/9993,false

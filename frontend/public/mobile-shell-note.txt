@@ -1,0 +1,2 @@
+Native Android shell uses the bundled React app.
+Backend and Celery still run from a reachable FastAPI server.
