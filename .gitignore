@@ -14,6 +14,8 @@ frontend/android/.idea/
 frontend/android/local.properties
 frontend/android/app/build/
 frontend/android/build/
+builds/*.apk
+builds/*.apk.sha256
 
 # Env
 .env
