@@ -109,6 +109,14 @@ export default function App() {
   const [wfsType, setWfsType] = useState("");
   const [wfsMeta, setWfsMeta] = useState(null);
 
+  const [planCanton, setPlanCanton] = useState("ZH");
+  const [planMunicipality, setPlanMunicipality] = useState("");
+  const [searchPlan, setSearchPlan] = useState(null);
+
+  const [wfsCatalog, setWfsCatalog] = useState([]);
+  const [wfsScan, setWfsScan] = useState(null);
+  const [wfsScanStatus, setWfsScanStatus] = useState("");
+
   const base = apiBase || window.location.origin;
   const mapRows = rows.filter((row) => row.latitude && row.longitude);
 
@@ -161,6 +169,12 @@ export default function App() {
       .then((data) => setDossier(data))
       .catch(() => setDossier(null));
   }, [selected, base]);
+
+  useEffect(() => {
+    if (base && planCanton) {
+      loadWfsCatalog(planCanton).catch(() => setWfsCatalog([]));
+    }
+  }, [base, planCanton]);
 
   const updateStatus = async (id, verification_status) => {
     await fetchJson(`/candidates/${id}/status`, {
@@ -225,6 +239,40 @@ export default function App() {
       setJobStatus(`Direkt importiert: ${response.created || 0}`);
       load();
     }
+  };
+
+  const loadSearchPlan = async () => {
+    const params = new URLSearchParams({
+      ...(planCanton ? { canton: planCanton } : {}),
+      ...(planMunicipality ? { municipality: planMunicipality } : {}),
+    });
+    const response = await fetchJson(`/swiss/search-plan?${params}`);
+    setSearchPlan(response);
+  };
+
+  const loadWfsCatalog = async (canton = planCanton) => {
+    const params = new URLSearchParams(canton ? { canton } : {});
+    const response = await fetchJson(`/swiss/wfs-catalog?${params}`);
+    setWfsCatalog(response.sources || []);
+  };
+
+  const scanWfsCatalog = async () => {
+    setWfsScanStatus("Scanner laeuft... je nach Kanton kann das 10-30 Sekunden dauern.");
+    setWfsScan(null);
+    try {
+      const params = new URLSearchParams({ ...(planCanton ? { canton: planCanton } : {}), max_sources: "3" });
+      const response = await fetchJson(`/swiss/wfs-scan?${params}`, { method: "POST" });
+      setWfsScan(response);
+      setWfsScanStatus(`Fertig: ${response.scanned} Quellen gescannt, ${response.failed} fehlgeschlagen.`);
+    } catch (error) {
+      setWfsScanStatus("Scanner fehlgeschlagen. Manuelle WFS-URL oder Geoportal pruefen.");
+    }
+  };
+
+  const useCatalogSource = (source) => {
+    setWfsUrl(source.wfs_url);
+    setWfsMeta(null);
+    setWfsScanStatus(`Quelle gewaehlt: ${source.title}`);
   };
 
   return (
@@ -297,6 +345,55 @@ export default function App() {
             </div>
           </SectionCard>
 
+          <SectionCard title="Swiss Source Hunter" subtitle="Kantonaler Rechercheplan: offizielle Quellen, Suchbegriffe, Beweis-Checkliste und die Killerfrage ans Grundbuchamt.">
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-[9rem_1fr_auto]">
+                <select className="rounded-2xl border border-slate-300 px-4 py-3 text-sm" value={planCanton} onChange={(event) => setPlanCanton(event.target.value)}>
+                  {cantons.map((canton) => (
+                    <option key={canton.code} value={canton.code}>{canton.code}</option>
+                  ))}
+                </select>
+                <input className="rounded-2xl border border-slate-300 px-4 py-3 text-sm" placeholder="Gemeinde optional, z.B. Sion" value={planMunicipality} onChange={(event) => setPlanMunicipality(event.target.value)} />
+                <button className="rounded-full bg-slate-900 px-4 py-3 text-sm font-semibold text-white" onClick={loadSearchPlan}>
+                  Plan bauen
+                </button>
+              </div>
+
+              {searchPlan ? (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+                    <div className="font-black text-emerald-950">{searchPlan.area}</div>
+                    <div className="mt-1 text-emerald-900">Sprache: {searchPlan.profile.language}</div>
+                    <a className="mt-3 inline-flex rounded-full bg-white px-3 py-2 text-xs font-semibold text-emerald-900" href={searchPlan.profile.geoportal_url} target="_blank" rel="noreferrer">
+                      Kantonales Geoportal oeffnen
+                    </a>
+                    <p className="mt-3 font-semibold">{searchPlan.killer_question}</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                    <div className="mb-2 font-bold">Suchbegriffe</div>
+                    <div className="flex flex-wrap gap-2">
+                      {searchPlan.profile.search_terms.map((term) => <SignalPill key={term} tone="slate">{term}</SignalPill>)}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm">
+                    <div className="mb-2 font-bold">Recherche-Schritte</div>
+                    <ol className="list-decimal space-y-2 pl-5">
+                      {searchPlan.steps.map((step) => <li key={step}>{step}</li>)}
+                    </ol>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm">
+                    <div className="mb-2 font-bold">Pflicht-Beweise</div>
+                    <ul className="list-disc space-y-2 pl-5">
+                      {searchPlan.must_have_evidence.map((item) => <li key={item}>{item}</li>)}
+                    </ul>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-600">Waehle einen Kanton und baue einen Plan. Das ist der zentrale Workflow, damit wir systematisch statt wild herumzuraten suchen.</p>
+              )}
+            </div>
+          </SectionCard>
+
           <SectionCard title="Import und Scanner" subtitle="Datei-Import, WFS-Metadaten und Celery-Status in einer einfachen Arbeitsflaeche.">
             <div className="space-y-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
@@ -304,6 +401,47 @@ export default function App() {
                 <button className="rounded-full bg-emerald-700 px-4 py-3 text-sm font-semibold text-white" onClick={handleUpload}>
                   Datei importieren
                 </button>
+              </div>
+
+              <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/70 p-4">
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="font-black text-emerald-950">Swiss WFS Scout</div>
+                    <p className="text-sm text-emerald-900">Kuratierter Kantons-Katalog plus Layer-Scanner fuer Parzellen-, Kataster- und Kontextdaten.</p>
+                  </div>
+                  <button className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white" onClick={scanWfsCatalog}>
+                    Kanton scannen
+                  </button>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {wfsCatalog.map((source) => (
+                    <button key={`${source.canton}-${source.wfs_url}`} className="rounded-2xl border border-white bg-white/90 p-3 text-left text-sm shadow-sm" onClick={() => useCatalogSource(source)}>
+                      <div className="font-bold">{source.canton} · {source.title}</div>
+                      <div className="mt-1 text-xs text-slate-600">{source.notes}</div>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {source.expected_terms.slice(0, 4).map((term) => <SignalPill key={term} tone="emerald">{term}</SignalPill>)}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {wfsScanStatus ? <p className="mt-3 text-sm text-emerald-950">{wfsScanStatus}</p> : null}
+                {wfsScan?.results?.length ? (
+                  <div className="mt-3 space-y-3">
+                    {wfsScan.results.map((result) => (
+                      <div key={result.source.wfs_url} className="rounded-2xl border border-white bg-white p-3 text-sm">
+                        <div className="font-bold">{result.source.title} · {result.feature_type_count} Layer</div>
+                        <div className="mt-2 space-y-2">
+                          {result.matches.filter((match) => match.score > 0).slice(0, 5).map((match) => (
+                            <button key={match.name} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left" onClick={() => { setWfsUrl(result.source.wfs_url); setWfsType(match.name); }}>
+                              <div className="font-semibold">{match.name}</div>
+                              <div className="text-xs text-slate-600">Score {match.score} · {match.title || "ohne Titel"}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               <div className="grid gap-3 md:grid-cols-[1.2fr_1fr_auto]">

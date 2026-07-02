@@ -2,9 +2,19 @@
 from typing import List
 
 SIGNALS = {
-    "strong": ["herrenlos", "ohne eigentümer", "sans maître", "senza padrone", "derelict", "dereliktion"],
-    "medium": ["abandoned parcel", "old access road", "path parcel", "unused road parcel", "unknown ownership"],
-    "weak": ["no owner listed"],
+    "strong": [
+        "herrenlos", "dereliktion", "ohne eigentümer", "ohne eigentuemer",
+        "sans maître", "sans maitre", "senza padrone", "res nullius",
+    ],
+    "medium": [
+        "abandoned parcel", "old access road", "path parcel", "unused road parcel",
+        "unknown ownership", "unbekannter eigentümer", "unbekannter eigentuemer",
+        "sans propriétaire", "sans proprietaire", "senza proprietario",
+    ],
+    "weak": [
+        "no owner listed", "kein eigentümer aufgeführt", "kein eigentuemer aufgefuehrt",
+        "nicht erfasst", "unbekannt", "n/a",
+    ],
 }
 
 def detect_signals(owner_text: str, land_type: str) -> List[str]:

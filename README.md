@@ -8,9 +8,13 @@ LandSeeker AI ist eine frohe, einfache und lebendige App fuer die Recherche pote
 - FastAPI Backend
 - Celery Worker mit lokalem SQLite-Broker
 - Kartenansicht, Kandidatenliste, Briefgenerator, WFS/CSV Import
+- Swiss Source Hunter: kantonaler Rechercheplan mit offiziellen Quellen, Suchbegriffen, Evidenz-Checkliste und Grundbuch-Killerfrage
+- Swiss WFS Scout: kuratierter kantonaler WFS-Katalog, Metadaten-Scanner und Layer-Ranking fuer Parzellen-/Katasterdaten
+- Robustere GeoJSON/WFS-Normalisierung fuer Schweizer Feldnamen, EGRID/Parzellennummern und Polygon-Zentroiden
 
 ## Rechtlicher Rahmen
 - Massgeblich ist `Art. 658 ZGB`
+- WFS-/Geoportal-Treffer sind nur Recherchehinweise, keine Eigentumsnachweise
 - Kein Auto-Claim
 - Keine automatische Einreichung
 - Jeder Kandidat muss beim zustaendigen Grundbuchamt verifiziert werden

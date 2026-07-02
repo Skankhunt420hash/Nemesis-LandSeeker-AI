@@ -25,6 +25,8 @@ from .ingestion import (
 from .intelligence import build_candidate_dossier
 from .letters import DISCLAIMER, letter_de, letter_fr, letter_it
 from .seed import seed_cantons
+from .swiss_sources import build_search_plan
+from .swiss_wfs_catalog import catalog_as_dict, scan_catalog
 
 Base.metadata.create_all(bind=engine)
 
@@ -75,6 +77,25 @@ def health():
 @app.get("/cantons", response_model=list[schemas.CantonOut])
 def get_cantons(db: Session = Depends(get_db)):
     return db.query(models.Canton).order_by(models.Canton.code).all()
+
+
+@app.get("/swiss/search-plan")
+def swiss_search_plan(canton: str | None = None, municipality: str | None = None):
+    return build_search_plan(canton=canton, municipality=municipality)
+
+
+@app.get("/swiss/wfs-catalog")
+def swiss_wfs_catalog(canton: str | None = None):
+    return {
+        "sources": catalog_as_dict(canton=canton),
+        "guardrail": "WFS-Quellen liefern Recherche- und Geodatenhinweise, keinen Eigentumsnachweis.",
+    }
+
+
+@app.post("/swiss/wfs-scan")
+def swiss_wfs_scan(canton: str | None = None, max_sources: int = 3):
+    safe_max = max(1, min(max_sources, 10))
+    return scan_catalog(canton=canton, max_sources=safe_max)
 
 
 @app.post("/candidates", response_model=schemas.ParcelOut)

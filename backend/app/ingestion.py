@@ -12,6 +12,61 @@ from .detector import detect_signals
 from .scoring import score_candidate
 
 
+FIELD_ALIASES = {
+    "canton": ("canton", "kanton", "kt", "ct", "canton_code"),
+    "municipality": ("municipality", "gemeinde", "commune", "comune", "municipalite", "bfs_name", "gemname"),
+    "parcel_number": ("parcel_number", "parzellennummer", "parzelle", "grundstuecknummer", "grundstücknummer", "nummer", "number", "egrid", "liegenschaftsnummer"),
+    "area_sqm": ("area_sqm", "flaeche", "fläche", "area", "shape_area", "flaeche_m2", "m2"),
+    "land_type": ("land_type", "type", "art", "bodenbedeckung", "nutzung", "zone", "objektart"),
+    "public_owner_text": ("public_owner_text", "owner", "eigentuemer", "eigentümer", "proprietaire", "propriétaire", "proprietario", "bemerkung", "hinweis"),
+    "source_url": ("source_url", "url", "source", "quelle"),
+    "is_protected_land": ("is_protected_land", "protected", "schutz", "schutzgebiet"),
+}
+
+
+def _first_value(data: dict, aliases: tuple[str, ...], default=None):
+    lowered = {str(k).strip().lower(): v for k, v in data.items()}
+    for alias in aliases:
+        value = lowered.get(alias)
+        if value not in (None, ""):
+            return value
+    return default
+
+
+def _centroid_from_coordinates(coords):
+    points = []
+
+    def walk(value):
+        if isinstance(value, list) and len(value) >= 2 and all(isinstance(x, (int, float)) for x in value[:2]):
+            points.append((value[0], value[1]))
+            return
+        if isinstance(value, list):
+            for child in value:
+                walk(child)
+
+    walk(coords)
+    if not points:
+        return None, None
+    lon = sum(point[0] for point in points) / len(points)
+    lat = sum(point[1] for point in points) / len(points)
+    return lon, lat
+
+
+def normalize_ingest_row(item: dict, fallback_source_url: str | None = None):
+    return {
+        "canton": _first_value(item, FIELD_ALIASES["canton"], ""),
+        "municipality": _first_value(item, FIELD_ALIASES["municipality"], ""),
+        "parcel_number": str(_first_value(item, FIELD_ALIASES["parcel_number"], "")),
+        "latitude": _first_value(item, ("latitude", "lat", "y")),
+        "longitude": _first_value(item, ("longitude", "lon", "lng", "x")),
+        "area_sqm": _first_value(item, FIELD_ALIASES["area_sqm"]),
+        "land_type": _first_value(item, FIELD_ALIASES["land_type"]),
+        "public_owner_text": _first_value(item, FIELD_ALIASES["public_owner_text"]),
+        "source_url": _first_value(item, FIELD_ALIASES["source_url"], fallback_source_url or "manual-import"),
+        "is_protected_land": _normalize_bool(_first_value(item, FIELD_ALIASES["is_protected_land"], False)),
+    }
+
+
 def _normalize_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -61,38 +116,29 @@ def parse_geojson_rows(content: bytes):
     for f in doc.get("features", []):
         p = f.get("properties", {})
         g = f.get("geometry", {})
-        coords = (g.get("coordinates") or [None, None])
-        rows.append(
-            {
-                "canton": p.get("canton"),
-                "municipality": p.get("municipality"),
-                "parcel_number": p.get("parcel_number"),
-                "latitude": coords[1],
-                "longitude": coords[0],
-                "area_sqm": p.get("area_sqm"),
-                "land_type": p.get("land_type"),
-                "public_owner_text": p.get("public_owner_text"),
-                "source_url": p.get("source_url"),
-                "is_protected_land": p.get("is_protected_land", False),
-            }
-        )
+        lon, lat = _centroid_from_coordinates(g.get("coordinates") or [])
+        row = normalize_ingest_row(p)
+        row["latitude"] = row["latitude"] or lat
+        row["longitude"] = row["longitude"] or lon
+        rows.append(row)
     return rows
 
 
 def ingest_rows(rows: list[dict], db: Session):
     created = 0
     for item in rows:
+        row = normalize_ingest_row(item)
         payload = schemas.ParcelIngest(
-            canton=item.get("canton"),
-            municipality=item.get("municipality"),
-            parcel_number=str(item.get("parcel_number")),
-            latitude=item.get("latitude"),
-            longitude=item.get("longitude"),
-            area_sqm=item.get("area_sqm"),
-            land_type=item.get("land_type"),
-            public_owner_text=item.get("public_owner_text"),
-            source_url=item.get("source_url"),
-            is_protected_land=_normalize_bool(item.get("is_protected_land")),
+            canton=row.get("canton"),
+            municipality=row.get("municipality"),
+            parcel_number=row.get("parcel_number"),
+            latitude=row.get("latitude"),
+            longitude=row.get("longitude"),
+            area_sqm=row.get("area_sqm"),
+            land_type=row.get("land_type"),
+            public_owner_text=row.get("public_owner_text"),
+            source_url=row.get("source_url"),
+            is_protected_land=row.get("is_protected_land"),
         )
         create_candidate_record(payload, db)
         created += 1
@@ -105,15 +151,20 @@ def fetch_wfs_metadata(url: str):
     r.raise_for_status()
     root = ET.fromstring(r.content)
 
-    ns = {
-        "wfs": "http://www.opengis.net/wfs/2.0",
+    namespaces = {
+        "wfs20": "http://www.opengis.net/wfs/2.0",
+        "wfs11": "http://www.opengis.net/wfs",
         "ows": "http://www.opengis.net/ows/1.1",
     }
     feature_types = []
-    for ft in root.findall(".//wfs:FeatureType", ns):
-        name = ft.findtext("wfs:Name", default="", namespaces=ns)
-        title = ft.findtext("wfs:Title", default="", namespaces=ns)
-        feature_types.append({"name": name, "title": title})
+    seen = set()
+    for path, prefix in ((".//wfs20:FeatureType", "wfs20"), (".//wfs11:FeatureType", "wfs11")):
+        for ft in root.findall(path, namespaces):
+            name = ft.findtext(f"{prefix}:Name", default="", namespaces=namespaces).strip()
+            title = ft.findtext(f"{prefix}:Title", default="", namespaces=namespaces).strip()
+            if name and name not in seen:
+                feature_types.append({"name": name, "title": title})
+                seen.add(name)
     return {"service": "WFS", "source": r.url, "feature_types": feature_types}
 
 
@@ -147,22 +198,9 @@ def fetch_wfs_geojson_rows(url: str, type_name: str, limit: int = 200):
     for f in doc.get("features", []):
         p = f.get("properties", {})
         g = f.get("geometry", {})
-        coords = g.get("coordinates") or [None, None]
-        lon, lat = (None, None)
-        if isinstance(coords, list) and len(coords) >= 2 and isinstance(coords[0], (int, float)):
-            lon, lat = coords[0], coords[1]
-        rows.append(
-            {
-                "canton": p.get("canton", ""),
-                "municipality": p.get("municipality", ""),
-                "parcel_number": p.get("parcel_number", p.get("number", "")),
-                "latitude": lat,
-                "longitude": lon,
-                "area_sqm": p.get("area_sqm", p.get("area")),
-                "land_type": p.get("land_type", p.get("type")),
-                "public_owner_text": p.get("public_owner_text", p.get("owner", "")),
-                "source_url": r.url,
-                "is_protected_land": p.get("is_protected_land", False),
-            }
-        )
+        lon, lat = _centroid_from_coordinates(g.get("coordinates") or [])
+        row = normalize_ingest_row(p, fallback_source_url=r.url)
+        row["latitude"] = row["latitude"] or lat
+        row["longitude"] = row["longitude"] or lon
+        rows.append(row)
     return rows

@@ -17,7 +17,7 @@ def score_candidate(signals: List[str], area_sqm: float | None, land_type: str |
     if area_sqm and area_sqm < 25:
         confidence -= 8
         risk += 15
-    if land_type and any(x in land_type.lower() for x in ["road", "path", "forest", "water", "protected"]):
+    if land_type and any(x in land_type.lower() for x in ["road", "path", "forest", "water", "protected", "strasse", "straße", "weg", "wald", "gewaesser", "gewässer", "schutz"]):
         risk += 25
     if is_protected_land:
         risk += 30
